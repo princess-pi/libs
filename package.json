@@ -1,0 +1,48 @@
+{
+  "name": "@princess-pi/libs",
+  "version": "1.0.0",
+  "description": "Shared library utilities for Princess Pi tools — config loader, build-stamp, manifest help, session path shortener",
+  "license": "MIT-0",
+  "author": {
+    "name": "Princess Pi",
+    "email": "princess-pi@agentic-arts.ai",
+    "url": "https://github.com/duppypro"
+  },
+  "type": "module",
+  "exports": {
+    "./config": {
+      "import": "./dist/config.mjs",
+      "types": "./dist/config.d.mts"
+    },
+    "./build-stamp": {
+      "import": "./dist/build-stamp.mjs",
+      "types": "./dist/build-stamp.d.mts"
+    },
+    "./manifest-help": {
+      "import": "./dist/manifest-help.mjs",
+      "types": "./dist/manifest-help.d.mts"
+    },
+    "./session-path-shortener": {
+      "import": "./dist/session-path-shortener.mjs",
+      "types": "./dist/session-path-shortener.d.mts"
+    }
+  },
+  "files": [
+    "dist/",
+    "extensions/lib/config.ts",
+    "extensions/lib/build-stamp.ts",
+    "extensions/lib/manifest-help.ts",
+    "extensions/lib/session-path-shortener.ts"
+  ],
+  "scripts": {
+    "build": "bun run build.ts",
+    "test": "bun run tests/run.ts",
+    "prepare": "bun run build"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "bun-types": "latest"
+  }
+}
