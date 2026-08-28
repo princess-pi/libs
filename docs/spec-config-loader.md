@@ -2,7 +2,7 @@
 
 ## Problem
 
-Tools in princess-pi-packages (`wtft`, `serve`, `merge`, etc.) have no persistent shared configuration. They rely on hardcoded defaults + CLI arguments passed per invocation. No way to set preferences once and have them apply everywhere.
+Tools in princess-pi-tools (`wtft`, `serve`, `merge`, etc.) have no persistent shared configuration. They rely on hardcoded defaults + CLI arguments passed per invocation. No way to set preferences once and have them apply everywhere.
 
 ## Design
 
@@ -15,17 +15,17 @@ JSON with comments — same pattern as Pi's `models.json`. Parsed with `stripJso
 One file per tool — the tool name IS the filename:
 
 ```
-~/.config/princess-pi-packages/wtft.json
-~/.config/princess-pi-packages/serve.json
+~/.config/princess-pi-tools/wtft.json
+~/.config/princess-pi-tools/serve.json
 ```
 
-Per-project overrides at `$CWD/.princess-pi-packages/<tool>.json`.
+Per-project overrides at `$CWD/.princess-pi-tools/<tool>.json`.
 
 ### Resolution Order (Cascading)
 
-1. **Local override:** `$CWD/.princess-pi-packages/<tool>.json`
-2. **Directory walk:** Walk up from `$CWD` to `~/` looking for `.princess-pi-packages/<tool>.json` at each level, stop at home or root
-3. **XDG global:** `$XDG_CONFIG_HOME/princess-pi-packages/<tool>.json` (fallback `~/.config/princess-pi-packages/<tool>.json`)
+1. **Local override:** `$CWD/.princess-pi-tools/<tool>.json`
+2. **Directory walk:** Walk up from `$CWD` to `~/` looking for `.princess-pi-tools/<tool>.json` at each level, stop at home or root
+3. **XDG global:** `$XDG_CONFIG_HOME/princess-pi-tools/<tool>.json` (fallback `~/.config/princess-pi-tools/<tool>.json`)
 4. **Hardcoded defaults:** Fall back to the defaults passed by the tool
 
 ### Merge Strategy

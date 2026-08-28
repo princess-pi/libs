@@ -1,12 +1,12 @@
 #!/usr/bin/env -S node --experimental-strip-types
 /**
- * @package princess-pi-packages
+ * @package princess-pi-tools
  * @test config-persistence
  * @description Covers the WRITE side of the config seam (#158).
  *
  *   `tests/config-loader.test.ts` covers resolution (defaults → XDG → CWD →
  *   walk-up). Nothing covered persistence — which is how #158 RC-4a survived:
- *   the Pi extension WRITES `~/.config/princess-pi-packages/wtft.json`, the CLI
+ *   the Pi extension WRITES `~/.config/princess-pi-tools/wtft.json`, the CLI
  *   READS it, and the test suite drives the CLI. Persisted state crossed from
  *   one surface to the other with no test standing in between.
  *
@@ -63,7 +63,7 @@ const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const CLI_BIN = path.join(REPO_ROOT, "bin", "wtft.mjs");
 
 const xdgRoot = trackSandbox(fs.mkdtempSync(path.join(os.tmpdir(), "wtft-config-persistence-")));
-const configDir = path.join(xdgRoot, "princess-pi-packages");
+const configDir = path.join(xdgRoot, "princess-pi-tools");
 const configPath = path.join(configDir, "wtft.json");
 const prevXdg = process.env.XDG_CONFIG_HOME;
 process.env.XDG_CONFIG_HOME = xdgRoot;

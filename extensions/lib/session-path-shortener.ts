@@ -1,5 +1,5 @@
 /**
- * @package princess-pi-packages
+ * @package princess-pi-tools
  * @module session-path-shortener
  * @description Shared path/name shortener utilities for Pi and Claude Code session display.
  *

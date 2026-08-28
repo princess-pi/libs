@@ -3,7 +3,7 @@
 // Creates temporary directory structures to verify hierarchical resolution,
 // deep merge semantics, array replacement, null unsetting, and error resilience.
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { trackSandbox } from "./lib/sandbox";
@@ -26,6 +26,17 @@ function ok(label: string, condition: boolean, detail?: string) {
 	}
 }
 
+const originalXdg = process.env.XDG_CONFIG_HOME;
+
+// EVERY test in this file is sandboxed here — setup() repoints XDG_CONFIG_HOME
+// before each one, so no individual test needs to, and none may skip it. This
+// matters more since the legacy-dir fallback landed: writeConfig now SEEDS from
+// ~/.config/princess-pi-packages/ and writes to ~/.config/princess-pi-tools/, so
+// an unsandboxed write test would migrate the developer's real config as a side
+// effect. Verified by running this file with XDG_CONFIG_HOME unset on a host
+// that has a real ~/.config/princess-pi-packages/tpm.json and no
+// princess-pi-tools/: 43/43 pass, no real directory is created, and the real
+// file's checksum is unchanged.
 function setup() {
 	testDir = trackSandbox(mkdtempSync(join(tmpdir(), "config-loader-test-")));
 	process.chdir(testDir);
@@ -36,6 +47,10 @@ function setup() {
 function teardown() {
 	process.chdir(originalCwd);
 	rmSync(testDir, { recursive: true, force: true });
+	// Restore rather than leave it pointing at a directory just deleted, so a
+	// later file sharing this process cannot inherit a dangling config root.
+	if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+	else process.env.XDG_CONFIG_HOME = originalXdg;
 }
 
 // --- Test 1: Defaults only (no config files exist) ---
@@ -54,7 +69,7 @@ teardown();
 
 setup();
 {
-	const xdgDir = join(testDir, ".config", "princess-pi-packages");
+	const xdgDir = join(testDir, ".config", "princess-pi-tools");
 	mkdirSync(xdgDir, { recursive: true });
 	writeFileSync(join(xdgDir, "wtft.json"), JSON.stringify({ interval: "2h", width: 120 }));
 
@@ -77,11 +92,11 @@ teardown();
 
 setup();
 {
-	const xdgDir = join(testDir, ".config", "princess-pi-packages");
+	const xdgDir = join(testDir, ".config", "princess-pi-tools");
 	mkdirSync(xdgDir, { recursive: true });
 	writeFileSync(join(xdgDir, "wtft.json"), JSON.stringify({ interval: "2h", limit: 10 }));
 
-	const projectDir = join(testDir, ".princess-pi-packages");
+	const projectDir = join(testDir, ".princess-pi-tools");
 	mkdirSync(projectDir, { recursive: true });
 	writeFileSync(join(projectDir, "wtft.json"), JSON.stringify({ limit: 5 }));
 
@@ -105,12 +120,12 @@ setup();
 {
 	// Deep nested project structure
 	const deep = join(testDir, "projects", "sub", "deep");
-	mkdirSync(join(deep, ".princess-pi-packages"), { recursive: true });
-	writeFileSync(join(deep, ".princess-pi-packages", "wtft.json"), JSON.stringify({ limit: 5 }));
+	mkdirSync(join(deep, ".princess-pi-tools"), { recursive: true });
+	writeFileSync(join(deep, ".princess-pi-tools", "wtft.json"), JSON.stringify({ limit: 5 }));
 
 	const mid = join(testDir, "projects");
-	mkdirSync(join(mid, ".princess-pi-packages"), { recursive: true });
-	writeFileSync(join(mid, ".princess-pi-packages", "wtft.json"), JSON.stringify({ limit: 20, width: 100 }));
+	mkdirSync(join(mid, ".princess-pi-tools"), { recursive: true });
+	writeFileSync(join(mid, ".princess-pi-tools", "wtft.json"), JSON.stringify({ limit: 20, width: 100 }));
 
 	process.chdir(deep);
 
@@ -128,12 +143,12 @@ teardown();
 setup();
 {
 	const mid = join(testDir, "projects");
-	mkdirSync(join(mid, ".princess-pi-packages"), { recursive: true });
-	writeFileSync(join(mid, ".princess-pi-packages", "wtft.json"), JSON.stringify({ interval: "2h", width: 100 }));
+	mkdirSync(join(mid, ".princess-pi-tools"), { recursive: true });
+	writeFileSync(join(mid, ".princess-pi-tools", "wtft.json"), JSON.stringify({ interval: "2h", width: 100 }));
 
 	const deep = join(testDir, "projects", "sub");
-	mkdirSync(join(deep, ".princess-pi-packages"), { recursive: true });
-	writeFileSync(join(deep, ".princess-pi-packages", "wtft.json"), JSON.stringify({ interval: "1h", width: null }));
+	mkdirSync(join(deep, ".princess-pi-tools"), { recursive: true });
+	writeFileSync(join(deep, ".princess-pi-tools", "wtft.json"), JSON.stringify({ interval: "1h", width: null }));
 
 	process.chdir(deep);
 
@@ -150,13 +165,13 @@ teardown();
 
 setup();
 {
-	mkdirSync(join(testDir, ".princess-pi-packages"), { recursive: true });
-	writeFileSync(join(testDir, ".princess-pi-packages", "wtft.json"), JSON.stringify({
+	mkdirSync(join(testDir, ".princess-pi-tools"), { recursive: true });
+	writeFileSync(join(testDir, ".princess-pi-tools", "wtft.json"), JSON.stringify({
 		cost: { input: 3.00 },
 		warning: { threshold: 0.30 },
 	}));
 
-	const xdgDir = join(testDir, ".config", "princess-pi-packages");
+	const xdgDir = join(testDir, ".config", "princess-pi-tools");
 	mkdirSync(xdgDir, { recursive: true });
 	writeFileSync(join(xdgDir, "wtft.json"), JSON.stringify({
 		cost: { input: 1.00, output: 15.00 },
@@ -183,12 +198,12 @@ teardown();
 
 setup();
 {
-	mkdirSync(join(testDir, ".princess-pi-packages"), { recursive: true });
-	writeFileSync(join(testDir, ".princess-pi-packages", "wtft.json"), JSON.stringify({
+	mkdirSync(join(testDir, ".princess-pi-tools"), { recursive: true });
+	writeFileSync(join(testDir, ".princess-pi-tools", "wtft.json"), JSON.stringify({
 		ignore: ["dist", ".next"],
 	}));
 
-	const xdgDir = join(testDir, ".config", "princess-pi-packages");
+	const xdgDir = join(testDir, ".config", "princess-pi-tools");
 	mkdirSync(xdgDir, { recursive: true });
 	writeFileSync(join(xdgDir, "wtft.json"), JSON.stringify({
 		ignore: ["node_modules", ".git"],
@@ -211,8 +226,8 @@ teardown();
 
 setup();
 {
-	mkdirSync(join(testDir, ".princess-pi-packages"), { recursive: true });
-	writeFileSync(join(testDir, ".princess-pi-packages", "wtft.json"), `{
+	mkdirSync(join(testDir, ".princess-pi-tools"), { recursive: true });
+	writeFileSync(join(testDir, ".princess-pi-tools", "wtft.json"), `{
 		// User preference — faster updates
 		"interval": "30m",
 		/*
@@ -245,8 +260,8 @@ teardown();
 
 setup();
 {
-	mkdirSync(join(testDir, ".princess-pi-packages"), { recursive: true });
-	writeFileSync(join(testDir, ".princess-pi-packages", "wtft.json"), "{ not valid json at all }");
+	mkdirSync(join(testDir, ".princess-pi-tools"), { recursive: true });
+	writeFileSync(join(testDir, ".princess-pi-tools", "wtft.json"), "{ not valid json at all }");
 
 	const { loadConfig } = await import("../extensions/lib/config.ts");
 	const config = loadConfig("wtft", { interval: "1h" });
@@ -258,12 +273,164 @@ teardown();
 
 setup();
 {
-	mkdirSync(join(testDir, ".princess-pi-packages"), { recursive: true });
-	writeFileSync(join(testDir, ".princess-pi-packages", "wtft.json"), `[1, 2, 3]`);
+	mkdirSync(join(testDir, ".princess-pi-tools"), { recursive: true });
+	writeFileSync(join(testDir, ".princess-pi-tools", "wtft.json"), `[1, 2, 3]`);
 
 	const { loadConfig } = await import("../extensions/lib/config.ts");
 	const config = loadConfig("wtft", { interval: "1h" });
 	ok("array top-level — returns defaults without crashing", config.interval === "1h");
+}
+teardown();
+
+// --- Test 12: legacy XDG dir is read when the new one is absent (rename migration) ---
+
+setup();
+{
+	const legacyDir = join(testDir, ".config", "princess-pi-packages");
+	mkdirSync(legacyDir, { recursive: true });
+	writeFileSync(join(legacyDir, "wtft.json"), JSON.stringify({ interval: "9h", limit: 42 }));
+
+	const { loadConfig } = await import("../extensions/lib/config.ts");
+	const config = loadConfig("wtft", { interval: "1h", limit: 10 });
+	ok("legacy XDG dir — value is read", config.interval === "9h", `got ${config.interval}`);
+	ok("legacy XDG dir — every key is read", config.limit === 42, `got ${config.limit}`);
+}
+teardown();
+
+// --- Test 13: the new XDG dir wins over the legacy one ---
+
+setup();
+{
+	const newDir = join(testDir, ".config", "princess-pi-tools");
+	const legacyDir = join(testDir, ".config", "princess-pi-packages");
+	mkdirSync(newDir, { recursive: true });
+	mkdirSync(legacyDir, { recursive: true });
+	writeFileSync(join(newDir, "wtft.json"), JSON.stringify({ interval: "new" }));
+	writeFileSync(join(legacyDir, "wtft.json"), JSON.stringify({ interval: "legacy" }));
+
+	const { loadConfig } = await import("../extensions/lib/config.ts");
+	const config = loadConfig("wtft", {});
+	ok("new XDG dir shadows legacy", config.interval === "new", `got ${config.interval}`);
+}
+teardown();
+
+// --- Test 14: a project-local legacy dir is read while walking up ---
+
+setup();
+{
+	mkdirSync(join(testDir, ".princess-pi-packages"), { recursive: true });
+	writeFileSync(
+		join(testDir, ".princess-pi-packages", "wtft.json"),
+		JSON.stringify({ interval: "local-legacy" }),
+	);
+
+	const { loadConfig } = await import("../extensions/lib/config.ts");
+	const config = loadConfig("wtft", { interval: "1h" });
+	ok("project-local legacy dir — value is read", config.interval === "local-legacy", `got ${config.interval}`);
+}
+teardown();
+
+// --- Test 15: writing while only a legacy config exists must not orphan its other keys ---
+//
+// The regression this pins: reads resolve new-dir OR legacy-dir, but writes only
+// ever target the new dir. Without a seed, the first write creates a new file
+// holding just the written key — and because that file now exists, the legacy one
+// is never consulted again, so every other setting vanishes with nothing to notice
+// it by. Found by pr-review on the rename PR (btw#63 Phase 3); never shipped.
+
+setup();
+{
+	const legacyDir = join(testDir, ".config", "princess-pi-packages");
+	mkdirSync(legacyDir, { recursive: true });
+	writeFileSync(
+		join(legacyDir, "tpm.json"),
+		JSON.stringify({ widget: true, footer: false, interval: "4h" }),
+	);
+
+	const { writeConfig, loadConfig } = await import("../extensions/lib/config.ts");
+	writeConfig("tpm", { disabledEmoji: true });
+
+	const after = loadConfig("tpm", {});
+	ok("write-migration — the written key lands", after.disabledEmoji === true);
+	ok("write-migration — legacy sibling keys survive", after.widget === true, `widget=${after.widget}`);
+	ok("write-migration — a false value survives too", after.footer === false, `footer=${after.footer}`);
+	ok("write-migration — scalar survives", after.interval === "4h", `interval=${after.interval}`);
+}
+teardown();
+
+// --- Test 16: an existing new-dir config is not re-seeded from legacy ---
+
+setup();
+{
+	const newDir = join(testDir, ".config", "princess-pi-tools");
+	const legacyDir = join(testDir, ".config", "princess-pi-packages");
+	mkdirSync(newDir, { recursive: true });
+	mkdirSync(legacyDir, { recursive: true });
+	writeFileSync(join(newDir, "tpm.json"), JSON.stringify({ widget: false }));
+	writeFileSync(join(legacyDir, "tpm.json"), JSON.stringify({ widget: true, stale: "yes" }));
+
+	const { writeConfig, loadConfig } = await import("../extensions/lib/config.ts");
+	writeConfig("tpm", { footer: true });
+
+	const after = loadConfig("tpm", {});
+	ok("no re-seed — new-dir value is kept", after.widget === false, `widget=${after.widget}`);
+	ok("no re-seed — legacy-only key is not resurrected", after.stale === undefined, `stale=${after.stale}`);
+}
+teardown();
+
+// --- Test 17: a legacy project-local override keeps the write LOCAL ---
+//
+// Scope auto-detection used to test only the new local path, so a pre-rename
+// ./.princess-pi-packages/ override sent the write to the GLOBAL file: the
+// local override sat unread, a global file appeared that had never existed,
+// and loadConfig — which does find the legacy local file while walking up —
+// then disagreed with writeConfig about where the setting lived.
+
+setup();
+{
+	const legacyLocal = join(testDir, ".princess-pi-packages");
+	mkdirSync(legacyLocal, { recursive: true });
+	writeFileSync(join(legacyLocal, "tpm.json"), JSON.stringify({ widget: true, interval: "7h" }));
+
+	const { writeConfig, loadConfig } = await import("../extensions/lib/config.ts");
+	writeConfig("tpm", { footer: true });
+
+	const newLocal = join(testDir, ".princess-pi-tools", "tpm.json");
+	const newGlobal = join(testDir, ".config", "princess-pi-tools", "tpm.json");
+	ok("legacy local override — write goes local", existsSync(newLocal));
+	ok("legacy local override — no stray global file", !existsSync(newGlobal));
+
+	const after = loadConfig("tpm", {});
+	ok("legacy local override — written key lands", after.footer === true);
+	ok("legacy local override — siblings survive", after.widget === true, `widget=${after.widget}`);
+	ok("legacy local override — scalar survives", after.interval === "7h", `interval=${after.interval}`);
+}
+teardown();
+
+// --- Test 18: an intentionally-emptied new config is not re-seeded from legacy ---
+//
+// `{}` is a state, not an absence. A user who clears their new-format config to
+// stop inheriting pre-rename settings must not have them resurrected by their
+// next write. The seed triggers on the target FILE not existing, so an empty
+// object — which parses to zero keys, exactly like a missing file did under the
+// first version of this check — is respected.
+
+setup();
+{
+	const newDir = join(testDir, ".config", "princess-pi-tools");
+	const legacyDir = join(testDir, ".config", "princess-pi-packages");
+	mkdirSync(newDir, { recursive: true });
+	mkdirSync(legacyDir, { recursive: true });
+	writeFileSync(join(newDir, "tpm.json"), "{}");
+	writeFileSync(join(legacyDir, "tpm.json"), JSON.stringify({ widget: true, interval: "4h" }));
+
+	const { writeConfig, loadConfig } = await import("../extensions/lib/config.ts");
+	writeConfig("tpm", { footer: true });
+
+	const after = loadConfig("tpm", {});
+	ok("emptied config — written key lands", after.footer === true);
+	ok("emptied config — legacy keys stay cleared", after.widget === undefined, `widget=${after.widget}`);
+	ok("emptied config — legacy scalar stays cleared", after.interval === undefined, `interval=${after.interval}`);
 }
 teardown();
 
