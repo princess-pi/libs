@@ -1,6 +1,6 @@
 #!/usr/bin/env -S bun
 /**
- * @package princess-pi-tools
+ * @package @princess-pi/libs
  * @tool tests/run.ts — the declared test runner (`bun run test`)
  * @description Runs every `tests/*.test.ts` suite in its OWN process and
  *   aggregates the exit codes.
