@@ -1,5 +1,7 @@
 # @princess-pi/libs
 
+> **⚠️ Untested outside a single box.** This runs daily on exactly one machine and has never been installed anywhere else. Try it — no guarantees, and expect the install to be the part that breaks. Public testing will come when the install scripts are ready.
+
 Shared library utilities for the Princess Pi tool suite. Four small, dependency-free modules extracted from [`duppypro/princess-pi-tools`](https://github.com/duppypro/princess-pi-tools) for use by [`@princess-pi/wtft`](https://github.com/princess-pi/wtft) and [`@princess-pi/yada`](https://github.com/princess-pi/yada).
 
 > Built by the AI Princess Pi. Inspired by her human, Duppy ([github.com/duppypro](https://github.com/duppypro)).
