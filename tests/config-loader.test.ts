@@ -29,14 +29,10 @@ function ok(label: string, condition: boolean, detail?: string) {
 const originalXdg = process.env.XDG_CONFIG_HOME;
 
 // EVERY test in this file is sandboxed here — setup() repoints XDG_CONFIG_HOME
-// before each one, so no individual test needs to, and none may skip it. This
-// matters more since the legacy-dir fallback landed: writeConfig now SEEDS from
-// ~/.config/princess-pi-packages/ and writes to ~/.config/princess-pi-tools/, so
-// an unsandboxed write test would migrate the developer's real config as a side
-// effect. Verified by running this file with XDG_CONFIG_HOME unset on a host
-// that has a real ~/.config/princess-pi-packages/tpm.json and no
-// princess-pi-tools/: 43/43 pass, no real directory is created, and the real
-// file's checksum is unchanged.
+// before each one, so no individual test needs to, and none may skip it. The
+// write tests would otherwise land in the developer's real
+// ~/.config/princess-pi-tools/, so the isolation keeps a test from mutating real
+// config as a side effect.
 function setup() {
 	testDir = trackSandbox(mkdtempSync(join(tmpdir(), "config-loader-test-")));
 	process.chdir(testDir);
@@ -282,7 +278,7 @@ setup();
 }
 teardown();
 
-// --- Test 12: legacy XDG dir is read when the new one is absent (rename migration) ---
+// --- Test 12: the legacy XDG dir is NOT read (rename migration is complete) ---
 
 setup();
 {
@@ -292,29 +288,26 @@ setup();
 
 	const { loadConfig } = await import("../extensions/lib/config.ts");
 	const config = loadConfig("wtft", { interval: "1h", limit: 10 });
-	ok("legacy XDG dir — value is read", config.interval === "9h", `got ${config.interval}`);
-	ok("legacy XDG dir — every key is read", config.limit === 42, `got ${config.limit}`);
+	ok("legacy XDG dir — ignored, default interval kept", config.interval === "1h", `got ${config.interval}`);
+	ok("legacy XDG dir — ignored, default limit kept", config.limit === 10, `got ${config.limit}`);
 }
 teardown();
 
-// --- Test 13: the new XDG dir wins over the legacy one ---
+// --- Test 13: the oldest legacy dir (princess-pi) is NOT read either ---
 
 setup();
 {
-	const newDir = join(testDir, ".config", "princess-pi-tools");
-	const legacyDir = join(testDir, ".config", "princess-pi-packages");
-	mkdirSync(newDir, { recursive: true });
-	mkdirSync(legacyDir, { recursive: true });
-	writeFileSync(join(newDir, "wtft.json"), JSON.stringify({ interval: "new" }));
-	writeFileSync(join(legacyDir, "wtft.json"), JSON.stringify({ interval: "legacy" }));
+	const oldDir = join(testDir, ".config", "princess-pi");
+	mkdirSync(oldDir, { recursive: true });
+	writeFileSync(join(oldDir, "wtft.json"), JSON.stringify({ interval: "7h" }));
 
 	const { loadConfig } = await import("../extensions/lib/config.ts");
-	const config = loadConfig("wtft", {});
-	ok("new XDG dir shadows legacy", config.interval === "new", `got ${config.interval}`);
+	const config = loadConfig("wtft", { interval: "1h" });
+	ok("oldest legacy dir — ignored, default kept", config.interval === "1h", `got ${config.interval}`);
 }
 teardown();
 
-// --- Test 14: a project-local legacy dir is read while walking up ---
+// --- Test 14: a project-local legacy dir is NOT read while walking up ---
 
 setup();
 {
@@ -326,17 +319,11 @@ setup();
 
 	const { loadConfig } = await import("../extensions/lib/config.ts");
 	const config = loadConfig("wtft", { interval: "1h" });
-	ok("project-local legacy dir — value is read", config.interval === "local-legacy", `got ${config.interval}`);
+	ok("project-local legacy dir — ignored, default kept", config.interval === "1h", `got ${config.interval}`);
 }
 teardown();
 
-// --- Test 15: writing while only a legacy config exists must not orphan its other keys ---
-//
-// The regression this pins: reads resolve new-dir OR legacy-dir, but writes only
-// ever target the new dir. Without a seed, the first write creates a new file
-// holding just the written key — and because that file now exists, the legacy one
-// is never consulted again, so every other setting vanishes with nothing to notice
-// it by. Found by pr-review on the rename PR (btw#63 Phase 3); never shipped.
+// --- Test 15: writeConfig does NOT seed from a legacy file ---
 
 setup();
 {
@@ -351,40 +338,13 @@ setup();
 	writeConfig("tpm", { disabledEmoji: true });
 
 	const after = loadConfig("tpm", {});
-	ok("write-migration — the written key lands", after.disabledEmoji === true);
-	ok("write-migration — legacy sibling keys survive", after.widget === true, `widget=${after.widget}`);
-	ok("write-migration — a false value survives too", after.footer === false, `footer=${after.footer}`);
-	ok("write-migration — scalar survives", after.interval === "4h", `interval=${after.interval}`);
+	ok("no legacy seed — the written key lands", after.disabledEmoji === true);
+	ok("no legacy seed — legacy keys are not resurrected", after.widget === undefined, `widget=${after.widget}`);
+	ok("no legacy seed — legacy scalar not resurrected", after.interval === undefined, `interval=${after.interval}`);
 }
 teardown();
 
-// --- Test 16: an existing new-dir config is not re-seeded from legacy ---
-
-setup();
-{
-	const newDir = join(testDir, ".config", "princess-pi-tools");
-	const legacyDir = join(testDir, ".config", "princess-pi-packages");
-	mkdirSync(newDir, { recursive: true });
-	mkdirSync(legacyDir, { recursive: true });
-	writeFileSync(join(newDir, "tpm.json"), JSON.stringify({ widget: false }));
-	writeFileSync(join(legacyDir, "tpm.json"), JSON.stringify({ widget: true, stale: "yes" }));
-
-	const { writeConfig, loadConfig } = await import("../extensions/lib/config.ts");
-	writeConfig("tpm", { footer: true });
-
-	const after = loadConfig("tpm", {});
-	ok("no re-seed — new-dir value is kept", after.widget === false, `widget=${after.widget}`);
-	ok("no re-seed — legacy-only key is not resurrected", after.stale === undefined, `stale=${after.stale}`);
-}
-teardown();
-
-// --- Test 17: a legacy project-local override keeps the write LOCAL ---
-//
-// Scope auto-detection used to test only the new local path, so a pre-rename
-// ./.princess-pi-packages/ override sent the write to the GLOBAL file: the
-// local override sat unread, a global file appeared that had never existed,
-// and loadConfig — which does find the legacy local file while walking up —
-// then disagreed with writeConfig about where the setting lived.
+// --- Test 16: a legacy project-local override does NOT steer the write scope ---
 
 setup();
 {
@@ -392,45 +352,25 @@ setup();
 	mkdirSync(legacyLocal, { recursive: true });
 	writeFileSync(join(legacyLocal, "tpm.json"), JSON.stringify({ widget: true, interval: "7h" }));
 
-	const { writeConfig, loadConfig } = await import("../extensions/lib/config.ts");
+	const { writeConfig } = await import("../extensions/lib/config.ts");
 	writeConfig("tpm", { footer: true });
 
 	const newLocal = join(testDir, ".princess-pi-tools", "tpm.json");
 	const newGlobal = join(testDir, ".config", "princess-pi-tools", "tpm.json");
-	ok("legacy local override — write goes local", existsSync(newLocal));
-	ok("legacy local override — no stray global file", !existsSync(newGlobal));
-
-	const after = loadConfig("tpm", {});
-	ok("legacy local override — written key lands", after.footer === true);
-	ok("legacy local override — siblings survive", after.widget === true, `widget=${after.widget}`);
-	ok("legacy local override — scalar survives", after.interval === "7h", `interval=${after.interval}`);
+	ok("legacy local override — ignored, write goes global", !existsSync(newLocal) && existsSync(newGlobal));
 }
 teardown();
 
-// --- Test 18: an intentionally-emptied new config is not re-seeded from legacy ---
-//
-// `{}` is a state, not an absence. A user who clears their new-format config to
-// stop inheriting pre-rename settings must not have them resurrected by their
-// next write. The seed triggers on the target FILE not existing, so an empty
-// object — which parses to zero keys, exactly like a missing file did under the
-// first version of this check — is respected.
+// --- Test 17: hasConfig ignores legacy dirs ---
 
 setup();
 {
-	const newDir = join(testDir, ".config", "princess-pi-tools");
 	const legacyDir = join(testDir, ".config", "princess-pi-packages");
-	mkdirSync(newDir, { recursive: true });
 	mkdirSync(legacyDir, { recursive: true });
-	writeFileSync(join(newDir, "tpm.json"), "{}");
-	writeFileSync(join(legacyDir, "tpm.json"), JSON.stringify({ widget: true, interval: "4h" }));
+	writeFileSync(join(legacyDir, "tpm.json"), JSON.stringify({ widget: true }));
 
-	const { writeConfig, loadConfig } = await import("../extensions/lib/config.ts");
-	writeConfig("tpm", { footer: true });
-
-	const after = loadConfig("tpm", {});
-	ok("emptied config — written key lands", after.footer === true);
-	ok("emptied config — legacy keys stay cleared", after.widget === undefined, `widget=${after.widget}`);
-	ok("emptied config — legacy scalar stays cleared", after.interval === undefined, `interval=${after.interval}`);
+	const { hasConfig } = await import("../extensions/lib/config.ts");
+	ok("hasConfig — legacy-only config is reported absent", hasConfig("tpm") === false);
 }
 teardown();
 
