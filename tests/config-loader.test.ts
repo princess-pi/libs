@@ -36,7 +36,7 @@ const originalXdg = process.env.XDG_CONFIG_HOME;
 function setup() {
 	testDir = trackSandbox(mkdtempSync(join(tmpdir(), "config-loader-test-")));
 	process.chdir(testDir);
-	// Isolate from real user config (prevents old-path fallback from leaking in)
+	// Isolate from real user config.
 	process.env.XDG_CONFIG_HOME = join(testDir, ".config");
 }
 
@@ -361,7 +361,48 @@ setup();
 }
 teardown();
 
-// --- Test 17: hasConfig ignores legacy dirs ---
+// --- Test 17: an existing new-dir config is not re-seeded from a legacy file ---
+
+setup();
+{
+	const newDir = join(testDir, ".config", "princess-pi-tools");
+	const legacyDir = join(testDir, ".config", "princess-pi-packages");
+	mkdirSync(newDir, { recursive: true });
+	mkdirSync(legacyDir, { recursive: true });
+	writeFileSync(join(newDir, "tpm.json"), JSON.stringify({ widget: false }));
+	writeFileSync(join(legacyDir, "tpm.json"), JSON.stringify({ widget: true, stale: "yes" }));
+
+	const { writeConfig, loadConfig } = await import("../extensions/lib/config.ts");
+	writeConfig("tpm", { footer: true });
+
+	const after = loadConfig("tpm", {});
+	ok("no re-seed — new-dir value is kept", after.widget === false, `widget=${after.widget}`);
+	ok("no re-seed — legacy-only key is not resurrected", after.stale === undefined, `stale=${after.stale}`);
+}
+teardown();
+
+// --- Test 18: an intentionally-emptied new config is not re-seeded from a legacy file ---
+
+setup();
+{
+	const newDir = join(testDir, ".config", "princess-pi-tools");
+	const legacyDir = join(testDir, ".config", "princess-pi-packages");
+	mkdirSync(newDir, { recursive: true });
+	mkdirSync(legacyDir, { recursive: true });
+	writeFileSync(join(newDir, "tpm.json"), "{}");
+	writeFileSync(join(legacyDir, "tpm.json"), JSON.stringify({ widget: true, interval: "4h" }));
+
+	const { writeConfig, loadConfig } = await import("../extensions/lib/config.ts");
+	writeConfig("tpm", { footer: true });
+
+	const after = loadConfig("tpm", {});
+	ok("emptied config — written key lands", after.footer === true);
+	ok("emptied config — legacy keys stay cleared", after.widget === undefined, `widget=${after.widget}`);
+	ok("emptied config — legacy scalar stays cleared", after.interval === undefined, `interval=${after.interval}`);
+}
+teardown();
+
+// --- Test 19: hasConfig ignores legacy dirs ---
 
 setup();
 {
