@@ -48,11 +48,9 @@ import { buildDisplayPath, shortenPath } from "@princess-pi/libs/session-path-sh
 
 ## Install
 
-```sh
-npm install @princess-pi/libs
-```
+**Not on npm yet** — `npm install @princess-pi/libs` returns 404 today.
 
-Or for development, with an exact version pin (required — see [why exact pins matter](https://github.com/duppypro/btw/issues/63)):
+Once it publishes, install on stock node (no bun required), with an exact version pin (required — see [why exact pins matter](https://github.com/duppypro/btw/issues/63)):
 
 ```sh
 npm install @princess-pi/libs@1.0.0
