@@ -128,6 +128,17 @@ function xdgConfigHome(): string {
 }
 
 /**
+ * The user's home directory, honouring $HOME with `os.homedir()` as the
+ * fallback — the same env-first pattern as `xdgConfigHome`. Not merely
+ * stylistic: bun caches `os.homedir()` at process start (unlike
+ * `process.env`), so a test cannot repoint it after import; reading `$HOME`
+ * directly is what makes the walk-up boundary below testable at all.
+ */
+function homeDir(): string {
+	return process.env.HOME || homedir();
+}
+
+/**
  * Resolve config file paths for a tool.
  *
  * Must resolve the global path the same way `loadConfig` does. It did not
@@ -152,15 +163,25 @@ export function getConfigPaths(toolName: string, dirName: string = CONFIG_DIR): 
 /**
  * Walk up from startDir toward root, collecting config files.
  * Returns [closest, ..., farthest] — reversed for merge order.
+ *
+ * Stops AT the home directory, inclusive: a config file that sits exactly at
+ * `homedir()` is still read, but the walk does not continue past it into a
+ * shared ancestor (`/home`, `/`) that could belong to an unrelated user or
+ * project (PR #13 review, libs#12). A startDir outside `homedir()` (a CI
+ * sandbox under `/tmp`, say) never reaches that check and walks to `/` as
+ * before.
  */
 function walkUpConfigs(toolName: string, startDir: string, dirName: string): Record<string, unknown>[] {
 	const results: Record<string, unknown>[] = [];
+	const home = homeDir();
 	let dir = startDir;
 
 	while (true) {
 		const currentPath = join(dir, `.${dirName}`, `${toolName}.json`);
 		const config = tryReadConfig(currentPath);
 		if (config) results.push(config);
+
+		if (dir === home) break;
 
 		const parent = dirname(dir);
 		if (parent === dir || parent === "/") break;
@@ -213,8 +234,10 @@ export function loadConfig(
 // ---
 
 /**
- * Read merged config for a tool. Legacy wrapper around loadConfig.
- * Returns flat merge (no walk-up, shallow merge) for backward compat.
+ * Read merged config for a tool. Thin wrapper around `loadConfig` with no
+ * defaults, kept for callers that predate that API — it runs the SAME full
+ * resolution (XDG global, walk-up, deep merge), not a flat/shallow one (PR
+ * #13 review; the older claim here was already stale before this diff).
  */
 export function readConfig(toolName: string, dirName: string = CONFIG_DIR): Record<string, unknown> {
 	return loadConfig(toolName, {}, dirName) as Record<string, unknown>;
@@ -252,16 +275,12 @@ export function writeConfig(
 		targetPath = paths.global;
 	}
 
-	let existing: Record<string, unknown> = {};
-	try {
-		const raw = readFileSync(targetPath, "utf8");
-		const parsed = JSON.parse(raw);
-		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-			existing = parsed;
-		}
-	} catch {
-		// No file or corrupt — start from empty.
-	}
+	// `tryReadConfig`, not a raw `JSON.parse` — the target file legally carries
+	// the same `//`/`/* */` comments `loadConfig` accepts, and a bare
+	// `JSON.parse` on one THROWS, so the catch below silently treated a
+	// commented-but-valid file as empty and a write discarded every existing
+	// key (PR #13 review, libs#12).
+	const existing = tryReadConfig(targetPath) ?? {};
 
 	const merged = { ...existing, ...settings };
 

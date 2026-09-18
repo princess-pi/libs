@@ -468,6 +468,66 @@ setup();
 }
 teardown();
 
+// --- Test 22: writeConfig preserves existing keys when the file has JSON comments (PR #13 finding) ---
+
+setup();
+{
+	mkdirSync(join(testDir, ".princess-pi-tools"), { recursive: true });
+	writeFileSync(
+		join(testDir, ".princess-pi-tools", "wtft.json"),
+		`{\n\t// kept across the write\n\t"interval": "2h"\n}`,
+	);
+
+	const { writeConfig, loadConfig } = await import("../extensions/lib/config.ts");
+	writeConfig("wtft", { limit: 9 }, "local");
+
+	const after = loadConfig("wtft", {});
+	ok("writeConfig + comments — new key lands", after.limit === 9, `got ${JSON.stringify(after)}`);
+	ok(
+		"writeConfig + comments — existing key survives a write, not discarded by a failed JSON.parse",
+		after.interval === "2h",
+		`got ${JSON.stringify(after)}`,
+	);
+}
+teardown();
+
+// --- Test 23: walk-up does not cross the home directory boundary (PR #13 finding) ---
+
+setup();
+{
+	const home = join(testDir, "home", "duppy");
+	const project = join(home, "projects", "wtft");
+	mkdirSync(project, { recursive: true });
+
+	// A shared ancestor OUTSIDE the home boundary — siblings, or the ancestor
+	// of home itself, could belong to an unrelated project or user.
+	const outsideAncestor = join(testDir, "home");
+	mkdirSync(join(outsideAncestor, ".wtft"), { recursive: true });
+	writeFileSync(join(outsideAncestor, ".wtft", "config.json"), JSON.stringify({ leaked: true }));
+
+	// A config AT the home boundary itself is still honoured — only crossing
+	// past it is out of bounds.
+	mkdirSync(join(home, ".wtft"), { recursive: true });
+	writeFileSync(join(home, ".wtft", "config.json"), JSON.stringify({ atHome: true }));
+
+	const prevHome = process.env.HOME;
+	process.env.HOME = home;
+	process.chdir(project);
+
+	const { loadConfig } = await import("../extensions/lib/config.ts");
+	const config = loadConfig("config", { leaked: false, atHome: false }, "wtft");
+
+	ok("walk-up boundary — config AT home is read", config.atHome === true, `got ${JSON.stringify(config)}`);
+	ok(
+		"walk-up boundary — a shared ancestor OUTSIDE home is not read",
+		config.leaked === false,
+		`got ${JSON.stringify(config)}`,
+	);
+
+	if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
+}
+teardown();
+
 // --- Summary ---
 
 console.log(`\n──────────────────────────────`);
