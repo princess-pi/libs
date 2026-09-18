@@ -12,7 +12,8 @@ JSON with comments — same pattern as Pi's `models.json`. Parsed with `stripJso
 
 ### File Layout
 
-One file per tool — the tool name IS the filename:
+One file per tool — the tool name IS the filename, under a directory named for the
+consuming project:
 
 ```
 ~/.config/princess-pi-tools/wtft.json
@@ -21,12 +22,20 @@ One file per tool — the tool name IS the filename:
 
 Per-project overrides at `$CWD/.princess-pi-tools/<tool>.json`.
 
+**The directory name is a parameter, not a constant (libs#12, princess-pi/wtft#156).**
+Every function takes it as a trailing optional argument, defaulting to
+`"princess-pi-tools"` — every caller in this repo keeps today's paths unchanged. A tool
+that is not part of princess-pi-tools (wtft, once extracted) passes its own name and gets
+`~/.config/<its-name>/<file>.json` instead.
+
 ### Resolution Order (Cascading)
 
-1. **Local override:** `$CWD/.princess-pi-tools/<tool>.json`
-2. **Directory walk:** Walk up from `$CWD` to `~/` looking for `.princess-pi-tools/<tool>.json` at each level, stop at home or root
-3. **XDG global:** `$XDG_CONFIG_HOME/princess-pi-tools/<tool>.json` (fallback `~/.config/princess-pi-tools/<tool>.json`)
+1. **Local override:** `$CWD/.<dirName>/<tool>.json`
+2. **Directory walk:** Walk up from `$CWD` to `~/` looking for `.<dirName>/<tool>.json` at each level, stop at home or root
+3. **XDG global:** `$XDG_CONFIG_HOME/<dirName>/<tool>.json` (fallback `~/.config/<dirName>/<tool>.json`)
 4. **Hardcoded defaults:** Fall back to the defaults passed by the tool
+
+`dirName` defaults to `"princess-pi-tools"` everywhere above.
 
 ### Merge Strategy
 
@@ -48,10 +57,11 @@ Per-project overrides at `$CWD/.princess-pi-tools/<tool>.json`.
 ### API
 
 ```ts
-export function loadConfig(toolName: string, defaults: Record<string, unknown>): Record<string, unknown>
+export function loadConfig(toolName: string, defaults: Record<string, unknown>, dirName?: string): Record<string, unknown>
 ```
 
-Synchronous, pure filesystem. Zero dependencies. No validation.
+Synchronous, pure filesystem. Zero dependencies. No validation. `getConfigPaths`,
+`readConfig`, `writeConfig`, and `hasConfig` take the same trailing optional `dirName`.
 
 ### Scope
 
