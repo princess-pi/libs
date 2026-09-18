@@ -415,6 +415,154 @@ setup();
 }
 teardown();
 
+// --- Test 20: custom dirName — reads its own dir, default dir unaffected (#158, libs#12) ---
+
+setup();
+{
+	const customDir = join(testDir, ".config", "wtft");
+	mkdirSync(customDir, { recursive: true });
+	writeFileSync(join(customDir, "config.json"), JSON.stringify({ interval: "9h", limit: 42 }));
+
+	const defaultDir = join(testDir, ".config", "princess-pi-tools");
+	mkdirSync(defaultDir, { recursive: true });
+	writeFileSync(join(defaultDir, "config.json"), JSON.stringify({ interval: "1h", limit: 1 }));
+
+	const { loadConfig } = await import("../extensions/lib/config.ts");
+
+	const custom = loadConfig("config", { interval: "default", limit: 0 }, "wtft");
+	ok("custom dirName — reads its own dir", custom.interval === "9h", `got ${custom.interval}`);
+	ok("custom dirName — reads its own dir (limit)", custom.limit === 42, `got ${custom.limit}`);
+
+	const unqualified = loadConfig("config", { interval: "default", limit: 0 });
+	ok(
+		"custom dirName — default caller is unaffected by a custom-dir file beside it",
+		unqualified.interval === "1h" && unqualified.limit === 1,
+		`got ${JSON.stringify(unqualified)}`,
+	);
+}
+teardown();
+
+// --- Test 21: custom dirName — getConfigPaths, writeConfig, hasConfig all honour it ---
+
+setup();
+{
+	const { getConfigPaths, writeConfig, hasConfig, loadConfig } = await import("../extensions/lib/config.ts");
+
+	const paths = getConfigPaths("config", "wtft");
+	ok(
+		"custom dirName — getConfigPaths global path names the custom dir",
+		paths.global === join(testDir, ".config", "wtft", "config.json"),
+		paths.global,
+	);
+
+	ok("custom dirName — hasConfig false before write", hasConfig("config", "wtft") === false);
+	writeConfig("config", { limit: 7 }, undefined, "wtft");
+	ok("custom dirName — hasConfig true after write", hasConfig("config", "wtft") === true);
+	ok(
+		"custom dirName — hasConfig for the default dir is unaffected",
+		hasConfig("config") === false,
+	);
+
+	const after = loadConfig("config", { limit: 0 }, "wtft");
+	ok("custom dirName — writeConfig wrote to the custom dir", after.limit === 7, `got ${after.limit}`);
+}
+teardown();
+
+// --- Test 22: writeConfig preserves existing keys when the file has JSON comments (PR #13 finding) ---
+
+setup();
+{
+	mkdirSync(join(testDir, ".princess-pi-tools"), { recursive: true });
+	writeFileSync(
+		join(testDir, ".princess-pi-tools", "wtft.json"),
+		`{\n\t// kept across the write\n\t"interval": "2h"\n}`,
+	);
+
+	const { writeConfig, loadConfig } = await import("../extensions/lib/config.ts");
+	writeConfig("wtft", { limit: 9 }, "local");
+
+	const after = loadConfig("wtft", {});
+	ok("writeConfig + comments — new key lands", after.limit === 9, `got ${JSON.stringify(after)}`);
+	ok(
+		"writeConfig + comments — existing key survives a write, not discarded by a failed JSON.parse",
+		after.interval === "2h",
+		`got ${JSON.stringify(after)}`,
+	);
+}
+teardown();
+
+// --- Test 23: walk-up does not cross the home directory boundary (PR #13 finding) ---
+
+setup();
+{
+	const home = join(testDir, "home", "duppy");
+	const project = join(home, "projects", "wtft");
+	mkdirSync(project, { recursive: true });
+
+	// A shared ancestor OUTSIDE the home boundary — siblings, or the ancestor
+	// of home itself, could belong to an unrelated project or user.
+	const outsideAncestor = join(testDir, "home");
+	mkdirSync(join(outsideAncestor, ".wtft"), { recursive: true });
+	writeFileSync(join(outsideAncestor, ".wtft", "config.json"), JSON.stringify({ leaked: true }));
+
+	// A config AT the home boundary itself is still honoured — only crossing
+	// past it is out of bounds.
+	mkdirSync(join(home, ".wtft"), { recursive: true });
+	writeFileSync(join(home, ".wtft", "config.json"), JSON.stringify({ atHome: true }));
+
+	const prevHome = process.env.HOME;
+	process.env.HOME = home;
+	process.chdir(project);
+
+	const { loadConfig } = await import("../extensions/lib/config.ts");
+	const config = loadConfig("config", { leaked: false, atHome: false }, "wtft");
+
+	ok("walk-up boundary — config AT home is read", config.atHome === true, `got ${JSON.stringify(config)}`);
+	ok(
+		"walk-up boundary — a shared ancestor OUTSIDE home is not read",
+		config.leaked === false,
+		`got ${JSON.stringify(config)}`,
+	);
+
+	if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
+}
+teardown();
+
+// --- Test 24: walk-up boundary survives a trailing slash on $HOME (PR #13 round-2 finding) ---
+
+setup();
+{
+	const home = join(testDir, "home", "duppy");
+	const project = join(home, "projects", "wtft");
+	mkdirSync(project, { recursive: true });
+
+	const outsideAncestor = join(testDir, "home");
+	mkdirSync(join(outsideAncestor, ".wtft"), { recursive: true });
+	writeFileSync(join(outsideAncestor, ".wtft", "config.json"), JSON.stringify({ leaked: true }));
+
+	mkdirSync(join(home, ".wtft"), { recursive: true });
+	writeFileSync(join(home, ".wtft", "config.json"), JSON.stringify({ atHome: true }));
+
+	const prevHome = process.env.HOME;
+	// The one difference from Test 23: a trailing slash, the way a shell
+	// completion or an inherited env sometimes writes $HOME.
+	process.env.HOME = home + "/";
+	process.chdir(project);
+
+	const { loadConfig } = await import("../extensions/lib/config.ts");
+	const config = loadConfig("config", { leaked: false, atHome: false }, "wtft");
+
+	ok("trailing-slash HOME — config AT home is still read", config.atHome === true, `got ${JSON.stringify(config)}`);
+	ok(
+		"trailing-slash HOME — the boundary still holds, ancestor outside home is not read",
+		config.leaked === false,
+		`got ${JSON.stringify(config)}`,
+	);
+
+	if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
+}
+teardown();
+
 // --- Summary ---
 
 console.log(`\n──────────────────────────────`);
