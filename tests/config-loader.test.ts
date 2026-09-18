@@ -528,6 +528,41 @@ setup();
 }
 teardown();
 
+// --- Test 24: walk-up boundary survives a trailing slash on $HOME (PR #13 round-2 finding) ---
+
+setup();
+{
+	const home = join(testDir, "home", "duppy");
+	const project = join(home, "projects", "wtft");
+	mkdirSync(project, { recursive: true });
+
+	const outsideAncestor = join(testDir, "home");
+	mkdirSync(join(outsideAncestor, ".wtft"), { recursive: true });
+	writeFileSync(join(outsideAncestor, ".wtft", "config.json"), JSON.stringify({ leaked: true }));
+
+	mkdirSync(join(home, ".wtft"), { recursive: true });
+	writeFileSync(join(home, ".wtft", "config.json"), JSON.stringify({ atHome: true }));
+
+	const prevHome = process.env.HOME;
+	// The one difference from Test 23: a trailing slash, the way a shell
+	// completion or an inherited env sometimes writes $HOME.
+	process.env.HOME = home + "/";
+	process.chdir(project);
+
+	const { loadConfig } = await import("../extensions/lib/config.ts");
+	const config = loadConfig("config", { leaked: false, atHome: false }, "wtft");
+
+	ok("trailing-slash HOME — config AT home is still read", config.atHome === true, `got ${JSON.stringify(config)}`);
+	ok(
+		"trailing-slash HOME — the boundary still holds, ancestor outside home is not read",
+		config.leaked === false,
+		`got ${JSON.stringify(config)}`,
+	);
+
+	if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
+}
+teardown();
+
 // --- Summary ---
 
 console.log(`\n──────────────────────────────`);

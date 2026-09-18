@@ -135,7 +135,13 @@ function xdgConfigHome(): string {
  * directly is what makes the walk-up boundary below testable at all.
  */
 function homeDir(): string {
-	return process.env.HOME || homedir();
+	const raw = process.env.HOME || homedir();
+	// Strip a trailing separator (bar the root itself, "/") — $HOME with a
+	// trailing slash is legal and some shells/tools write it that way, and the
+	// walk-up boundary below compares this against `dirname()` output, which
+	// never carries one (PR #13 review, libs#12). Without normalizing here,
+	// "/home/duppy/" !== "/home/duppy" forever, and the walk never stops.
+	return raw === "/" ? raw : raw.replace(/\/+$/, "");
 }
 
 /**
@@ -184,7 +190,13 @@ function walkUpConfigs(toolName: string, startDir: string, dirName: string): Rec
 		if (dir === home) break;
 
 		const parent = dirname(dir);
-		if (parent === dir || parent === "/") break;
+		// `parent === dir` alone terminates: `dirname("/") === "/"`, so this
+		// still stops at the real filesystem root. The old extra
+		// `parent === "/"` arm broke ONE step too early — as soon as the
+		// NEXT dir would be root, never checking root itself, which is also
+		// why a $HOME of "/" could never satisfy the `dir === home` check
+		// above (PR #13 review, libs#12).
+		if (parent === dir) break;
 		dir = parent;
 	}
 
