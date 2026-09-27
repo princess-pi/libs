@@ -267,10 +267,6 @@ export function readConfig(toolName: string, dirName: string = CONFIG_DIR): Reco
  * Persist settings for a tool. Merges into existing config at the target
  * file (reads first, overlays new keys, writes back).
  *
- * Scope resolution (when scope is omitted):
- *   - If a project-local config already exists → write local.
- *   - Otherwise → write global (~/.config/<dirName>/<tool>.json)
- *
  * `dirName` defaults to `"princess-pi-tools"` — every existing caller that
  * omits it resolves exactly the paths it always has.
  */
@@ -305,7 +301,7 @@ export function writeConfig(
 }
 
 /**
- * Check whether any config file exists for a tool (global or local).
+ * Check whether any config file exists for a tool.
  * `dirName` defaults to `"princess-pi-tools"`.
  */
 export function hasConfig(toolName: string, dirName: string = CONFIG_DIR): boolean {
