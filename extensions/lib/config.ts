@@ -144,6 +144,10 @@ function homeDir(): string {
 	return raw === "/" ? raw : raw.replace(/\/+$/, "");
 }
 
+function noWalkup(): boolean {
+	return process.env.PRINCESS_PI_CONFIG_NO_WALKUP === "1";
+}
+
 /**
  * Resolve config file paths for a tool.
  *
@@ -233,7 +237,7 @@ export function loadConfig(
 	if (globalConfig) deepMerge(merged, globalConfig);
 
 	// Walk-up configs from CWD (farthest first, closest last)
-	const walkConfigs = process.env.PRINCESS_PI_CONFIG_NO_WALKUP === "1" ? [] : walkUpConfigs(toolName, process.cwd(), dirName);
+	const walkConfigs = noWalkup() ? [] : walkUpConfigs(toolName, process.cwd(), dirName);
 	for (let i = walkConfigs.length - 1; i >= 0; i--) {
 		deepMerge(merged, walkConfigs[i]);
 	}
@@ -278,7 +282,7 @@ export function writeConfig(
 ): void {
 	const paths = getConfigPaths(toolName, dirName);
 
-	const hasLocal = existsSync(paths.local);
+	const hasLocal = !noWalkup() && existsSync(paths.local);
 
 	let targetPath: string;
 	if (scope === "local" || (scope === undefined && hasLocal)) {
@@ -306,5 +310,5 @@ export function writeConfig(
  */
 export function hasConfig(toolName: string, dirName: string = CONFIG_DIR): boolean {
 	const paths = getConfigPaths(toolName, dirName);
-	return existsSync(paths.global) || existsSync(paths.local);
+	return existsSync(paths.global) || (!noWalkup() && existsSync(paths.local));
 }

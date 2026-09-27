@@ -3,7 +3,7 @@
 // Creates temporary directory structures to verify hierarchical resolution,
 // deep merge semantics, array replacement, null unsetting, and error resilience.
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { trackSandbox } from "./lib/sandbox";
@@ -27,6 +27,7 @@ function ok(label: string, condition: boolean, detail?: string) {
 }
 
 const originalXdg = process.env.XDG_CONFIG_HOME;
+const originalNoWalkup = process.env.PRINCESS_PI_CONFIG_NO_WALKUP;
 
 // EVERY test in this file is sandboxed here — setup() repoints XDG_CONFIG_HOME
 // before each one, so no individual test needs to, and none may skip it. The
@@ -38,6 +39,7 @@ function setup() {
 	process.chdir(testDir);
 	// Isolate from real user config.
 	process.env.XDG_CONFIG_HOME = join(testDir, ".config");
+	delete process.env.PRINCESS_PI_CONFIG_NO_WALKUP;
 }
 
 function teardown() {
@@ -47,6 +49,8 @@ function teardown() {
 	// later file sharing this process cannot inherit a dangling config root.
 	if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
 	else process.env.XDG_CONFIG_HOME = originalXdg;
+	if (originalNoWalkup === undefined) delete process.env.PRINCESS_PI_CONFIG_NO_WALKUP;
+	else process.env.PRINCESS_PI_CONFIG_NO_WALKUP = originalNoWalkup;
 }
 
 // --- Test 1: Defaults only (no config files exist) ---
@@ -563,11 +567,11 @@ setup();
 }
 teardown();
 
-// --- Test 25: PRINCESS_PI_CONFIG_NO_WALKUP=1 reads only the XDG global and the defaults (#15) ---
+// --- Test 25: PRINCESS_PI_CONFIG_NO_WALKUP=1 reads only the XDG global and the defaults ---
 
 setup();
 {
-	const { loadConfig, readConfig } = await import("../extensions/lib/config.ts");
+	const { loadConfig, readConfig, hasConfig, writeConfig } = await import("../extensions/lib/config.ts");
 	mkdirSync(join(testDir, ".princess-pi-tools"), { recursive: true });
 	writeFileSync(join(testDir, ".princess-pi-tools", "nowalk.json"), JSON.stringify({ local: true }));
 	mkdirSync(join(testDir, ".config", "princess-pi-tools"), { recursive: true });
@@ -578,7 +582,12 @@ setup();
 	ok("no-walkup — the walk-up file is not read", config.local === undefined, `got ${JSON.stringify(config)}`);
 	ok("no-walkup — the XDG global and the defaults still are", config.global === true && config.d === 1, `got ${JSON.stringify(config)}`);
 	ok("no-walkup — readConfig follows loadConfig", readConfig("nowalk").local === undefined);
-	delete process.env.PRINCESS_PI_CONFIG_NO_WALKUP;
+	writeFileSync(join(testDir, ".princess-pi-tools", "localonly.json"), JSON.stringify({ local: true }));
+	ok("no-walkup — precondition: a project-only file exists", existsSync(join(testDir, ".princess-pi-tools", "localonly.json")));
+	ok("no-walkup — hasConfig ignores a project-only file", hasConfig("localonly") === false);
+	writeConfig("nowalk", { written: true });
+	ok("no-walkup — writeConfig leaves the project file alone", JSON.parse(readFileSync(join(testDir, ".princess-pi-tools", "nowalk.json"), "utf8")).written === undefined);
+	ok("no-walkup — and the write is read back", loadConfig("nowalk", {}).written === true);
 }
 teardown();
 

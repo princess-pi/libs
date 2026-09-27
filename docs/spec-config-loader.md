@@ -38,7 +38,8 @@ that is not part of princess-pi-tools (wtft, once extracted) passes its own name
 `dirName` defaults to `"princess-pi-tools"` everywhere above.
 
 With `PRINCESS_PI_CONFIG_NO_WALKUP=1` in the environment, steps 1 and 2 are skipped: only the XDG
-global and the defaults are read. A consumer's test runner sets it so a developer's project
+global and the defaults are read. `hasConfig` ignores the project file too, and `writeConfig` with no
+scope writes the global file, so a write is read back. A consumer's test runner sets it so a developer's project
 config cannot change a test's result.
 
 ### Merge Strategy
