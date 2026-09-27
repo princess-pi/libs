@@ -144,6 +144,10 @@ function homeDir(): string {
 	return raw === "/" ? raw : raw.replace(/\/+$/, "");
 }
 
+function noWalkup(): boolean {
+	return process.env.PRINCESS_PI_CONFIG_NO_WALKUP === "1";
+}
+
 /**
  * Resolve config file paths for a tool.
  *
@@ -233,7 +237,7 @@ export function loadConfig(
 	if (globalConfig) deepMerge(merged, globalConfig);
 
 	// Walk-up configs from CWD (farthest first, closest last)
-	const walkConfigs = walkUpConfigs(toolName, process.cwd(), dirName);
+	const walkConfigs = noWalkup() ? [] : walkUpConfigs(toolName, process.cwd(), dirName);
 	for (let i = walkConfigs.length - 1; i >= 0; i--) {
 		deepMerge(merged, walkConfigs[i]);
 	}
@@ -263,10 +267,6 @@ export function readConfig(toolName: string, dirName: string = CONFIG_DIR): Reco
  * Persist settings for a tool. Merges into existing config at the target
  * file (reads first, overlays new keys, writes back).
  *
- * Scope resolution (when scope is omitted):
- *   - If a project-local config already exists → write local.
- *   - Otherwise → write global (~/.config/<dirName>/<tool>.json)
- *
  * `dirName` defaults to `"princess-pi-tools"` — every existing caller that
  * omits it resolves exactly the paths it always has.
  */
@@ -278,7 +278,7 @@ export function writeConfig(
 ): void {
 	const paths = getConfigPaths(toolName, dirName);
 
-	const hasLocal = existsSync(paths.local);
+	const hasLocal = !noWalkup() && existsSync(paths.local);
 
 	let targetPath: string;
 	if (scope === "local" || (scope === undefined && hasLocal)) {
@@ -301,10 +301,10 @@ export function writeConfig(
 }
 
 /**
- * Check whether any config file exists for a tool (global or local).
+ * Check whether any config file exists for a tool.
  * `dirName` defaults to `"princess-pi-tools"`.
  */
 export function hasConfig(toolName: string, dirName: string = CONFIG_DIR): boolean {
 	const paths = getConfigPaths(toolName, dirName);
-	return existsSync(paths.global) || existsSync(paths.local);
+	return existsSync(paths.global) || (!noWalkup() && existsSync(paths.local));
 }
