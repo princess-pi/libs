@@ -233,7 +233,7 @@ export function loadConfig(
 	if (globalConfig) deepMerge(merged, globalConfig);
 
 	// Walk-up configs from CWD (farthest first, closest last)
-	const walkConfigs = walkUpConfigs(toolName, process.cwd(), dirName);
+	const walkConfigs = process.env.PRINCESS_PI_CONFIG_NO_WALKUP === "1" ? [] : walkUpConfigs(toolName, process.cwd(), dirName);
 	for (let i = walkConfigs.length - 1; i >= 0; i--) {
 		deepMerge(merged, walkConfigs[i]);
 	}

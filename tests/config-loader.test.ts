@@ -563,6 +563,25 @@ setup();
 }
 teardown();
 
+// --- Test 25: PRINCESS_PI_CONFIG_NO_WALKUP=1 reads only the XDG global and the defaults (#15) ---
+
+setup();
+{
+	const { loadConfig, readConfig } = await import("../extensions/lib/config.ts");
+	mkdirSync(join(testDir, ".princess-pi-tools"), { recursive: true });
+	writeFileSync(join(testDir, ".princess-pi-tools", "nowalk.json"), JSON.stringify({ local: true }));
+	mkdirSync(join(testDir, ".config", "princess-pi-tools"), { recursive: true });
+	writeFileSync(join(testDir, ".config", "princess-pi-tools", "nowalk.json"), JSON.stringify({ global: true }));
+	ok("no-walkup — precondition: the walk-up file is read without the variable", loadConfig("nowalk", {}).local === true);
+	process.env.PRINCESS_PI_CONFIG_NO_WALKUP = "1";
+	const config = loadConfig("nowalk", { d: 1 });
+	ok("no-walkup — the walk-up file is not read", config.local === undefined, `got ${JSON.stringify(config)}`);
+	ok("no-walkup — the XDG global and the defaults still are", config.global === true && config.d === 1, `got ${JSON.stringify(config)}`);
+	ok("no-walkup — readConfig follows loadConfig", readConfig("nowalk").local === undefined);
+	delete process.env.PRINCESS_PI_CONFIG_NO_WALKUP;
+}
+teardown();
+
 // --- Summary ---
 
 console.log(`\n──────────────────────────────`);
